@@ -52,7 +52,7 @@ export default function AdminDashboard() {
         .from('complaints')
         .select(`
           *,
-          profiles!complaints_student_id_fkey (
+          profiles!student_id (
             full_name,
             email,
             student_id

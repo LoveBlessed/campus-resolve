@@ -40,16 +40,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         if (session?.user) {
           // Fetch user profile
-          setTimeout(async () => {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('user_id', session.user.id)
-              .maybeSingle();
-            
-            setProfile(profileData);
-            setLoading(false);
-          }, 0);
+      setTimeout(async () => {
+        try {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+          
+          if (profileError) {
+            console.error('Profile fetch error:', profileError);
+          }
+          
+          setProfile(profileData);
+        } catch (error) {
+          console.error('Error fetching profile:', error);
+        } finally {
+          setLoading(false);
+        }
+      }, 100);
         } else {
           setProfile(null);
           setLoading(false);
@@ -79,7 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
-          student_id: studentId
+          student_id: studentId,
+          email: email
         }
       }
     });
