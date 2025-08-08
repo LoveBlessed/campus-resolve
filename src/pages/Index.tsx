@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { useAuth } from '@/hooks/useAuth';
-import { GraduationCap, LogOut, User } from 'lucide-react';
+import { GraduationCap, LogOut, User, Settings } from 'lucide-react';
 import StudentDashboard from '@/components/dashboard/StudentDashboard';
 import AdminDashboard from '@/components/dashboard/AdminDashboard';
 import ComplaintForm from '@/components/forms/ComplaintForm';
@@ -60,9 +61,10 @@ const Index = () => {
               <div className="text-right">
                 <p className="text-sm font-medium">{profile?.full_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {profile?.role === 'admin' ? 'Administrator' : `Student ID: ${profile?.student_id}`}
+                  {profile?.role === 'admin' ? 'Administrator' : `Student ID: ${profile?.student_id || 'Not Set'}`}
                 </p>
               </div>
+              <ThemeToggle />
               <Button variant="outline" size="sm" onClick={signOut}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
