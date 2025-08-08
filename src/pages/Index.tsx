@@ -10,7 +10,8 @@ import ComplaintForm from '@/components/forms/ComplaintForm';
 import { Loader2 } from 'lucide-react';
 
 const Index = () => {
-  const { user, profile, loading, signOut } = useAuth();
+  const auth = useAuth();
+  const { user, profile, loading, signOut } = auth;
   const [showComplaintForm, setShowComplaintForm] = useState(false);
 
   // Show loading spinner while checking authentication

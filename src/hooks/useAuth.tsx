@@ -32,50 +32,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Fetch user profile
-      setTimeout(async () => {
-        try {
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-          
-          if (profileError) {
-            console.error('Profile fetch error:', profileError);
-          }
-          
-          setProfile(profileData);
-        } catch (error) {
-          console.error('Error fetching profile:', error);
-        } finally {
-          setLoading(false);
-        }
-      }, 100);
+          // Fetch user profile with proper error handling
+          setTimeout(async () => {
+            if (!mounted) return;
+            
+            try {
+              const { data: profileData, error: profileError } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .maybeSingle();
+              
+              if (profileError) {
+                console.error('Profile fetch error:', profileError);
+              }
+              
+              if (mounted) {
+                setProfile(profileData);
+                setLoading(false);
+              }
+            } catch (error) {
+              console.error('Error fetching profile:', error);
+              if (mounted) {
+                setLoading(false);
+              }
+            }
+          }, 100);
         } else {
-          setProfile(null);
-          setLoading(false);
+          if (mounted) {
+            setProfile(null);
+            setLoading(false);
+          }
         }
       }
     );
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      
       setSession(session);
       setUser(session?.user ?? null);
-      if (!session) {
+      if (!session && mounted) {
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signUp = async (email: string, password: string, fullName: string, studentId?: string) => {
