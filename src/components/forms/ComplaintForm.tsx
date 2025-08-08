@@ -131,7 +131,7 @@ export default function ComplaintForm({ onBack, onSuccess }: ComplaintFormProps)
           title: formData.title.trim(),
           category: formData.category as 'academic' | 'hostel' | 'admin' | 'harassment' | 'finance' | 'other',
           description: formData.description.trim(),
-          attachment_urls: attachmentUrls
+          attachment_urls: attachmentUrls.length > 0 ? attachmentUrls : null
         });
 
       if (error) throw error;
