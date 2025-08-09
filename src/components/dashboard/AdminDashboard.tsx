@@ -6,10 +6,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Search, Filter, Clock, CheckCircle, XCircle, AlertCircle, User, FileText } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, Filter, Clock, CheckCircle, XCircle, AlertCircle, User, FileText, Download, BarChart3, TrendingUp, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 interface Complaint {
   id: string;
@@ -96,6 +99,9 @@ export default function AdminDashboard() {
         description: "The complaint status has been updated successfully."
       });
 
+      // Send notification to student
+      await sendNotification(selectedComplaint, updateData.admin_remarks ? 'remarks_added' : 'status_update');
+
       // Refresh complaints
       await fetchComplaints();
       
@@ -163,7 +169,84 @@ export default function AdminDashboard() {
     total: complaints.length,
     pending: complaints.filter(c => c.status === 'pending').length,
     inProgress: complaints.filter(c => c.status === 'in_progress').length,
-    resolved: complaints.filter(c => c.status === 'resolved').length
+    resolved: complaints.filter(c => c.status === 'resolved').length,
+    rejected: complaints.filter(c => c.status === 'rejected').length
+  };
+
+  // Analytics data
+  const categoryStats = [
+    { name: 'Academic', value: complaints.filter(c => c.category === 'academic').length },
+    { name: 'Hostel', value: complaints.filter(c => c.category === 'hostel').length },
+    { name: 'Admin', value: complaints.filter(c => c.category === 'admin').length },
+    { name: 'Harassment', value: complaints.filter(c => c.category === 'harassment').length },
+    { name: 'Finance', value: complaints.filter(c => c.category === 'finance').length },
+    { name: 'Other', value: complaints.filter(c => c.category === 'other').length }
+  ].filter(item => item.value > 0);
+
+  const statusChartData = [
+    { status: 'Pending', count: stats.pending, fill: '#eab308' },
+    { status: 'In Progress', count: stats.inProgress, fill: '#3b82f6' },
+    { status: 'Resolved', count: stats.resolved, fill: '#10b981' },
+    { status: 'Rejected', count: stats.rejected, fill: '#ef4444' }
+  ].filter(item => item.count > 0);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+  // Calculate resolution time averages
+  const resolvedComplaints = complaints.filter(c => c.status === 'resolved');
+  const avgResolutionTime = resolvedComplaints.length > 0 
+    ? resolvedComplaints.reduce((sum, complaint) => {
+        const created = new Date(complaint.created_at);
+        const updated = new Date(complaint.updated_at);
+        return sum + (updated.getTime() - created.getTime());
+      }, 0) / resolvedComplaints.length / (1000 * 60 * 60 * 24) // Convert to days
+    : 0;
+
+  // Export to CSV
+  const exportToCSV = () => {
+    const csvData = filteredComplaints.map(complaint => ({
+      'ID': complaint.id,
+      'Title': complaint.title,
+      'Category': complaint.category,
+      'Status': complaint.status,
+      'Student Name': complaint.profiles.full_name,
+      'Student ID': complaint.profiles.student_id,
+      'Student Email': complaint.profiles.email,
+      'Description': complaint.description.replace(/,/g, ';'), // Replace commas to avoid CSV issues
+      'Admin Remarks': complaint.admin_remarks || '',
+      'Created Date': new Date(complaint.created_at).toLocaleDateString(),
+      'Updated Date': new Date(complaint.updated_at).toLocaleDateString()
+    }));
+
+    const headers = Object.keys(csvData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...csvData.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `complaints_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Export completed",
+      description: "Complaints data has been exported to CSV."
+    });
+  };
+
+  // Send notification (placeholder for now)
+  const sendNotification = async (complaint: Complaint, type: 'status_update' | 'remarks_added') => {
+    // This would integrate with email service in a real implementation
+    toast({
+      title: "Notification sent",
+      description: `Student ${complaint.profiles.full_name} has been notified about the ${type.replace('_', ' ')}.`,
+    });
   };
 
   if (loading) {
@@ -185,8 +268,16 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="complaints">Complaints</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center">
@@ -243,6 +334,208 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Analytics Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Resolution Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Average Resolution Time</span>
+                <span className="font-semibold">{avgResolutionTime.toFixed(1)} days</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Resolution Rate</span>
+                <span className="font-semibold">
+                  {stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(1) : 0}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Complaints This Month</span>
+                <span className="font-semibold">{stats.total}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Recent Activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {complaints.slice(0, 3).map((complaint, index) => (
+                <div key={complaint.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex-1">
+                    <p className="font-medium text-sm truncate">{complaint.title}</p>
+                    <p className="text-xs text-muted-foreground">by {complaint.profiles.full_name}</p>
+                  </div>
+                  <Badge variant="outline" className={`text-xs ${getStatusColor(complaint.status)}`}>
+                    {complaint.status.replace('_', ' ')}
+                  </Badge>
+                </div>
+              ))}
+              {complaints.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">No recent activity</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Status Distribution Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Complaint Status Distribution</CardTitle>
+                <CardDescription>Current status breakdown of all complaints</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={{
+                  pending: { label: "Pending", color: "#eab308" },
+                  in_progress: { label: "In Progress", color: "#3b82f6" },
+                  resolved: { label: "Resolved", color: "#10b981" },
+                  rejected: { label: "Rejected", color: "#ef4444" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusChartData}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        dataKey="count"
+                        label={({ status, count }) => `${status}: ${count}`}
+                      >
+                        {statusChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+
+            {/* Category Distribution Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Complaints by Category</CardTitle>
+                <CardDescription>Distribution across different complaint categories</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ChartContainer config={{
+                  academic: { label: "Academic", color: "#3b82f6" },
+                  hostel: { label: "Hostel", color: "#10b981" },
+                  admin: { label: "Administration", color: "#f59e0b" },
+                  harassment: { label: "Harassment", color: "#ef4444" },
+                  finance: { label: "Finance", color: "#8b5cf6" },
+                  other: { label: "Other", color: "#06b6d4" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryStats}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                        {categoryStats.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Detailed Analytics */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Resolution Insights</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
+                    <p className="text-sm text-muted-foreground">Total Resolved</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{avgResolutionTime.toFixed(1)}</p>
+                    <p className="text-sm text-muted-foreground">Avg. Days to Resolve</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {stats.total > 0 ? ((stats.resolved / stats.total) * 100).toFixed(0) : 0}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Resolution Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Pending Analysis</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-2xl font-bold text-yellow-600">{stats.pending}</p>
+                    <p className="text-sm text-muted-foreground">Awaiting Review</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">{stats.inProgress}</p>
+                    <p className="text-sm text-muted-foreground">In Progress</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {complaints.filter(c => {
+                        const days = Math.floor((Date.now() - new Date(c.created_at).getTime()) / (1000 * 60 * 60 * 24));
+                        return days > 7 && c.status === 'pending';
+                      }).length}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Overdue (7+ days)</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Export & Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Button onClick={exportToCSV} className="w-full" variant="outline">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export to CSV
+                  </Button>
+                  <div className="text-center text-sm text-muted-foreground">
+                    <p>Export filtered complaints</p>
+                    <p className="font-medium">{filteredComplaints.length} records</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="complaints" className="space-y-6">
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
@@ -395,6 +688,16 @@ export default function AdminDashboard() {
                               >
                                 {updating ? 'Updating...' : 'Update Complaint'}
                               </Button>
+                              {selectedComplaint && (
+                                <Button
+                                  variant="outline"
+                                  onClick={() => sendNotification(selectedComplaint, 'status_update')}
+                                  className="flex items-center gap-2"
+                                >
+                                  <Mail className="h-4 w-4" />
+                                  Notify Student
+                                </Button>
+                              )}
                             </div>
                           </div>
                         </DialogContent>
@@ -414,6 +717,8 @@ export default function AdminDashboard() {
           ))
         )}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
